@@ -26,8 +26,6 @@ static BLEServer*         server = nullptr;
 static BLECharacteristic* txChar = nullptr;
 static BLECharacteristic* rxChar = nullptr;
 static volatile bool      connected = false;
-static volatile bool      secure = false;
-static volatile uint32_t  passkey = 0;
 static volatile uint16_t  mtu = 23;
 
 static void rxPush(const uint8_t* p, size_t n) {
@@ -53,8 +51,6 @@ class ServerCallbacks : public BLEServerCallbacks {
   }
   void onDisconnect(BLEServer* s) override {
     connected = false;
-    secure = false;
-    passkey = 0;
     mtu = 23;
     Serial.println("[ble] disconnected");
     // Restart advertising so the next client can find us.
@@ -66,33 +62,11 @@ class ServerCallbacks : public BLEServerCallbacks {
   }
 };
 
-// LE Secure Connections, passkey-entry: we are DisplayOnly, the central
-// is KeyboardOnly. The stack picks a random 6-digit passkey, calls
-// onPassKeyNotify here, and the user types it on the desktop. main.cpp
-// polls blePasskey() to render it.
-class SecCallbacks : public BLESecurityCallbacks {
-  uint32_t onPassKeyRequest() override { return 0; }
-  bool onConfirmPIN(uint32_t) override { return false; }
-  bool onSecurityRequest() override { return true; }
-  void onPassKeyNotify(uint32_t pk) override {
-    passkey = pk;
-    Serial.printf("[ble] passkey %06lu\n", (unsigned long)pk);
-  }
-  void onAuthenticationComplete(esp_ble_auth_cmpl_t cmpl) override {
-    passkey = 0;
-    secure = cmpl.success;
-    Serial.printf("[ble] auth %s\n", cmpl.success ? "ok" : "FAIL");
-    if (!cmpl.success && server) server->disconnect(server->getConnId());
-  }
-};
 
 void bleInit(const char* deviceName) {
   BLEDevice::init(deviceName);
   // Request the biggest MTU we can get. macOS negotiates to 185 typically.
   BLEDevice::setMTU(517);
-
-  BLEDevice::setEncryptionLevel(ESP_BLE_SEC_ENCRYPT_MITM);
-  BLEDevice::setSecurityCallbacks(new SecCallbacks());
 
   server = BLEDevice::createServer();
   server->setCallbacks(new ServerCallbacks());
@@ -103,26 +77,23 @@ void bleInit(const char* deviceName) {
     NUS_TX_UUID,
     BLECharacteristic::PROPERTY_NOTIFY
   );
-  txChar->setAccessPermissions(ESP_GATT_PERM_READ_ENCRYPTED);
+  txChar->setAccessPermissions(ESP_GATT_PERM_READ);
   BLE2902* cccd = new BLE2902();
-  cccd->setAccessPermissions(ESP_GATT_PERM_READ_ENCRYPTED | ESP_GATT_PERM_WRITE_ENCRYPTED);
+  cccd->setAccessPermissions(ESP_GATT_PERM_READ | ESP_GATT_PERM_WRITE);
   txChar->addDescriptor(cccd);
 
   rxChar = svc->createCharacteristic(
     NUS_RX_UUID,
     BLECharacteristic::PROPERTY_WRITE | BLECharacteristic::PROPERTY_WRITE_NR
   );
-  rxChar->setAccessPermissions(ESP_GATT_PERM_WRITE_ENCRYPTED);
+  rxChar->setAccessPermissions(ESP_GATT_PERM_WRITE);
   rxChar->setCallbacks(new RxCallbacks());
 
   svc->start();
 
   BLESecurity* sec = new BLESecurity();
-  sec->setAuthenticationMode(ESP_LE_AUTH_REQ_SC_MITM_BOND);
-  sec->setCapability(ESP_IO_CAP_OUT);
-  sec->setKeySize(16);
-  sec->setInitEncryptionKey(ESP_BLE_ENC_KEY_MASK | ESP_BLE_ID_KEY_MASK);
-  sec->setRespEncryptionKey(ESP_BLE_ENC_KEY_MASK | ESP_BLE_ID_KEY_MASK);
+  sec->setAuthenticationMode(ESP_LE_AUTH_NO_BOND);
+  sec->setCapability(ESP_IO_CAP_NONE);
 
   BLEAdvertising* adv = BLEDevice::getAdvertising();
   adv->addServiceUUID(NUS_SERVICE_UUID);
@@ -134,8 +105,8 @@ void bleInit(const char* deviceName) {
 }
 
 bool bleConnected() { return connected; }
-bool bleSecure()    { return secure; }
-uint32_t blePasskey() { return passkey; }
+bool bleSecure()    { return false; }   // no encryption; kept for API compat
+uint32_t blePasskey() { return 0; }     // no passkey flow
 
 void bleClearBonds() {
   int n = esp_ble_get_bond_device_num();
