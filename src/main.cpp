@@ -356,7 +356,7 @@ static bool            _onUsb       = false;
 static void clockRefreshRtc() {
   if (millis() - _clkLastRead < 1000) return;
   _clkLastRead = millis();
-  _onUsb = M5.Power.getVBusVoltage() > 4000;
+  _onUsb = M5.Power.getVBUSVoltage() > 4000;
   M5.Rtc.getTime(&_clkTm);
   M5.Rtc.getDate(&_clkDt);
 }
@@ -595,7 +595,7 @@ void drawInfo() {
 
     int vBat_mV = (int)M5.Power.getBatteryVoltage();
     int iBat_mA = (int)M5.Power.getBatteryCurrent();
-    int vBus_mV = (int)M5.Power.getVBusVoltage();
+    int vBus_mV = (int)M5.Power.getVBUSVoltage();
     int pct = (vBat_mV - 3200) / 10;   // (v-3.2)/(4.2-3.2)*100 = (v-3.2)*100 = (mv-3200)/10
     if (pct < 0) pct = 0; if (pct > 100) pct = 100;
     bool usb = vBus_mV > 4000;
