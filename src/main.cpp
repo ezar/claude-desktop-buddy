@@ -1,4 +1,4 @@
-#include <M5Unified.h>
+#include "lgfx_compat.h"
 #include <LittleFS.h>
 #include <stdarg.h>
 #include "ble_bridge.h"
